@@ -36,5 +36,13 @@
     "@types/react": "~18.3.12",
     "typescript": "^5.3.3"
   },
-  "private": true
+  "private": true,
+  "overrides": {
+    "metro": "~0.81.0",
+    "metro-resolver": "~0.81.0",
+    "metro-config": "~0.81.0",
+    "metro-cache": "~0.81.0",
+    "metro-transform-worker": "~0.81.0",
+    "metro-runtime": "~0.81.0"
+  }
 }
