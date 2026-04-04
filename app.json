@@ -34,7 +34,8 @@
         {
           "photosPermission": "Allow Budget App to access your photos."
         }
-      ]
+      ],
+      "expo-font"
     ],
     "experiments": {
       "typedRoutes": false
