@@ -14,25 +14,14 @@ import type { ScheduledItem, Settings, TimelineEvent, RecurrenceInterval } from 
 
 // ─── Recurrence Helpers ───────────────────────────────────────────────────────
 
-export function advanceByInterval(date: Date, interval: RecurrenceInterval): Date {
+export function advanceByInterval(date: Date, interval: RecurrenceInterval, customDays?: number | null): Date {
   switch (interval) {
     case 'weekly':    return addDays(date, 7);
     case 'biweekly':  return addDays(date, 14);
     case 'monthly':   return addMonths(date, 1);
     case 'quarterly': return addQuarters(date, 1);
     case 'annually':  return addYears(date, 1);
-    case 'none':      return date;
-    default:          return date;
-  }
-}
-
-export function rewindByInterval(date: Date, interval: RecurrenceInterval): Date {
-  switch (interval) {
-    case 'weekly':    return addDays(date, -7);
-    case 'biweekly':  return addDays(date, -14);
-    case 'monthly':   return addMonths(date, -1);
-    case 'quarterly': return addQuarters(date, -1);
-    case 'annually':  return addYears(date, -1);
+    case 'custom':    return addDays(date, customDays ?? 30);
     case 'none':      return date;
     default:          return date;
   }
@@ -47,29 +36,26 @@ export function getOccurrencesInRange(
   end: Date
 ): Date[] {
   const interval = item.recurrence_interval;
+  let current = parseISO(item.due_date);
   const results: Date[] = [];
 
   if (interval === 'none') {
-    const d = parseISO(item.due_date);
-    if (!isBefore(d, start) && !isAfter(d, end)) {
-      results.push(d);
+    if (!isBefore(current, start) && !isAfter(current, end)) {
+      results.push(current);
     }
     return results;
   }
 
-  // Walk base date backwards until before start
-  let base = parseISO(item.due_date);
-  while (!isBefore(base, start)) {
-    base = rewindByInterval(base, interval);
+  const customDays = item.recurrence_days;
+
+  // due_date is always the next upcoming occurrence — only walk forward from it
+  while (isBefore(current, start)) {
+    current = advanceByInterval(current, interval, customDays);
   }
 
-  // Walk forward collecting dates in range
-  let current = advanceByInterval(base, interval);
   while (!isAfter(current, end)) {
-    if (!isBefore(current, start)) {
-      results.push(current);
-    }
-    current = advanceByInterval(current, interval);
+    results.push(current);
+    current = advanceByInterval(current, interval, customDays);
   }
 
   return results;
@@ -223,6 +209,6 @@ export function getNextOccurrenceDate(item: ScheduledItem): string {
     return item.due_date;
   }
   const base = parseISO(item.due_date);
-  const next = advanceByInterval(base, item.recurrence_interval);
+  const next = advanceByInterval(base, item.recurrence_interval, item.recurrence_days);
   return format(next, 'yyyy-MM-dd');
 }

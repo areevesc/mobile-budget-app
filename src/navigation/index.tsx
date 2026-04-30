@@ -6,8 +6,8 @@ import { Ionicons } from '@expo/vector-icons';
 
 import { DashboardScreen } from '../screens/DashboardScreen';
 import { TransactionsScreen } from '../screens/TransactionsScreen';
+import { InsightsScreen } from '../screens/InsightsScreen';
 import { ScheduleScreen } from '../screens/ScheduleScreen';
-import { SinkingFundsScreen } from '../screens/SinkingFundsScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';
 import { FAB } from '../components/FAB';
 import { COLORS } from '../lib/utils';
@@ -19,8 +19,8 @@ type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
 const TAB_ICONS: Record<string, { active: IoniconName; inactive: IoniconName }> = {
   Dashboard: { active: 'home', inactive: 'home-outline' },
   Transactions: { active: 'list', inactive: 'list-outline' },
+  Insights: { active: 'bar-chart', inactive: 'bar-chart-outline' },
   Schedule: { active: 'calendar', inactive: 'calendar-outline' },
-  Funds: { active: 'wallet', inactive: 'wallet-outline' },
   Settings: { active: 'settings', inactive: 'settings-outline' },
 };
 
@@ -35,8 +35,6 @@ export function AppNavigator() {
               backgroundColor: COLORS.card,
               borderTopColor: COLORS.border,
               borderTopWidth: 1,
-              height: 60,
-              paddingBottom: 8,
               paddingTop: 8,
             },
             tabBarActiveTintColor: COLORS.accent,
@@ -52,8 +50,8 @@ export function AppNavigator() {
         >
           <Tab.Screen name="Dashboard" component={DashboardScreen} />
           <Tab.Screen name="Transactions" component={TransactionsScreen} />
+          <Tab.Screen name="Insights" component={InsightsScreen} />
           <Tab.Screen name="Schedule" component={ScheduleScreen} />
-          <Tab.Screen name="Funds" component={SinkingFundsScreen} options={{ title: 'Sinking Funds' }} />
           <Tab.Screen name="Settings" component={SettingsScreen} />
         </Tab.Navigator>
 

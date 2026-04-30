@@ -1,11 +1,14 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
-  View, Text, FlatList, TouchableOpacity, SafeAreaView,
+  View, Text, SectionList, TouchableOpacity,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Button } from '../components/ui/Button';
 import { TogglePill } from '../components/ui/TogglePill';
 import { Picker } from '../components/ui/Picker';
+import { PeriodPicker } from '../components/ui/PeriodPicker';
+import { DatePickerField } from '../components/ui/DatePickerField';
 import { TransactionModal } from '../components/modals/TransactionModal';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import {
@@ -15,21 +18,44 @@ import {
   useUpdateTransaction,
   useDeleteTransaction,
 } from '../hooks/useQueries';
-import { formatCurrency, formatDate, hexToRgba, COLORS } from '../lib/utils';
+import {
+  formatCurrency,
+  formatDate,
+  hexToRgba,
+  COLORS,
+  DatePreset,
+  getDateRange,
+  formatSectionDate,
+} from '../lib/utils';
 import type { Transaction } from '../types';
 
 type TypeFilter = 'all' | 'income' | 'expense';
+type TxSection = { title: string; data: Transaction[] };
 
 export function TransactionsScreen() {
+  const today = new Date().toISOString().split('T')[0];
+
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all');
   const [categoryFilter, setCategoryFilter] = useState<number | null>(null);
+  const [datePreset, setDatePreset] = useState<DatePreset>('all');
+  const [customFrom, setCustomFrom] = useState(today);
+  const [customTo, setCustomTo] = useState(today);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingTx, setEditingTx] = useState<Transaction | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Transaction | null>(null);
 
-  const filters: { type?: string; category_id?: number } = {};
-  if (typeFilter !== 'all') filters.type = typeFilter;
-  if (categoryFilter !== null) filters.category_id = categoryFilter;
+  const { from: dateFrom, to: dateTo } = useMemo(() => {
+    if (datePreset === 'custom') return { from: customFrom, to: customTo };
+    if (datePreset === 'all') return { from: undefined, to: undefined };
+    return { from: getDateRange(datePreset).from, to: getDateRange(datePreset).to };
+  }, [datePreset, customFrom, customTo]);
+
+  const filters = useMemo(() => ({
+    ...(typeFilter !== 'all' && { type: typeFilter }),
+    ...(categoryFilter !== null && { category_id: categoryFilter }),
+    ...(dateFrom && { dateFrom }),
+    ...(dateTo && { dateTo }),
+  }), [typeFilter, categoryFilter, dateFrom, dateTo]);
 
   const { data: transactions = [] } = useTransactions(filters);
   const { data: categories = [] } = useCategories();
@@ -37,12 +63,29 @@ export function TransactionsScreen() {
   const updateTransaction = useUpdateTransaction();
   const deleteTransaction = useDeleteTransaction();
 
+  const sections: TxSection[] = useMemo(() => {
+    const groups: Record<string, Transaction[]> = {};
+    for (const tx of transactions) {
+      if (!groups[tx.date]) groups[tx.date] = [];
+      groups[tx.date].push(tx);
+    }
+    return Object.keys(groups)
+      .sort((a, b) => b.localeCompare(a))
+      .map((date) => ({ title: formatSectionDate(date), data: groups[date] }));
+  }, [transactions]);
+
   const categoryOptions = [
     { value: -1, label: 'All Categories' },
     ...categories.map((c) => ({ value: c.id, label: `${c.icon} ${c.name}` })),
   ];
 
-  const hasFilters = typeFilter !== 'all' || categoryFilter !== null;
+  const hasFilters = typeFilter !== 'all' || categoryFilter !== null || datePreset !== 'all';
+
+  const clearFilters = () => {
+    setTypeFilter('all');
+    setCategoryFilter(null);
+    setDatePreset('all');
+  };
 
   const handleSave = (data: {
     date: string; amount: number; type: 'income' | 'expense';
@@ -125,6 +168,21 @@ export function TransactionsScreen() {
     </View>
   );
 
+  const renderSectionHeader = ({ section }: { section: TxSection }) => (
+    <View
+      style={{
+        backgroundColor: COLORS.background,
+        paddingHorizontal: 16,
+        paddingTop: 12,
+        paddingBottom: 6,
+      }}
+    >
+      <Text style={{ color: COLORS.muted, fontSize: 12, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase' }}>
+        {section.title}
+      </Text>
+    </View>
+  );
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.background }}>
       {/* Header */}
@@ -153,7 +211,8 @@ export function TransactionsScreen() {
       </View>
 
       {/* Filters */}
-      <View style={{ paddingHorizontal: 16, paddingBottom: 12, gap: 10 }}>
+      <View style={{ paddingHorizontal: 16, paddingBottom: 8, gap: 10 }}>
+        {/* Type toggle */}
         <TogglePill
           options={[
             { value: 'all', label: 'All' },
@@ -164,6 +223,8 @@ export function TransactionsScreen() {
           onChange={setTypeFilter}
           activeColors={{ income: '#10b981', expense: '#ef4444', all: COLORS.accent }}
         />
+
+        {/* Category filter */}
         <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
           <View style={{ flex: 1 }}>
             <Picker
@@ -175,7 +236,7 @@ export function TransactionsScreen() {
           </View>
           {hasFilters ? (
             <TouchableOpacity
-              onPress={() => { setTypeFilter('all'); setCategoryFilter(null); }}
+              onPress={clearFilters}
               style={{
                 paddingHorizontal: 12,
                 paddingVertical: 10,
@@ -187,15 +248,32 @@ export function TransactionsScreen() {
             </TouchableOpacity>
           ) : null}
         </View>
+
+        {/* Date preset pills */}
+        <PeriodPicker value={datePreset} onChange={setDatePreset} />
+
+        {/* Custom date range */}
+        {datePreset === 'custom' && (
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            <View style={{ flex: 1 }}>
+              <DatePickerField label="From" value={customFrom} onChange={setCustomFrom} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <DatePickerField label="To" value={customTo} onChange={setCustomTo} />
+            </View>
+          </View>
+        )}
       </View>
 
       {/* List */}
-      <FlatList
-        data={transactions}
+      <SectionList
+        sections={sections}
         keyExtractor={(item) => String(item.id)}
         renderItem={renderItem}
+        renderSectionHeader={renderSectionHeader}
         style={{ flex: 1 }}
         contentContainerStyle={{ paddingBottom: 100 }}
+        stickySectionHeadersEnabled={false}
         ListEmptyComponent={
           <View style={{ alignItems: 'center', paddingTop: 60, paddingHorizontal: 32 }}>
             <Ionicons name="receipt-outline" size={48} color={COLORS.border} />
@@ -208,7 +286,7 @@ export function TransactionsScreen() {
               </Text>
             ) : (
               <Text style={{ color: COLORS.muted, fontSize: 14, marginTop: 4, textAlign: 'center' }}>
-                Tap the + button to add one.
+                Tap the Add button to add one.
               </Text>
             )}
           </View>

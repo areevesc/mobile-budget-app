@@ -3,6 +3,7 @@ import {
   Modal, View, Text, TouchableOpacity, Pressable,
   KeyboardAvoidingView, Platform,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { COLORS } from '../../lib/utils';
@@ -11,31 +12,39 @@ import type { Account } from '../../types';
 interface AccountModalProps {
   visible: boolean;
   onClose: () => void;
-  onSave: (name: string, balance: number) => void;
+  onSave: (name: string, balance: number, isDefault: boolean) => void;
   editing?: Account | null;
+  totalAccounts?: number;
 }
 
-export function AccountModal({ visible, onClose, onSave, editing }: AccountModalProps) {
+export function AccountModal({ visible, onClose, onSave, editing, totalAccounts = 0 }: AccountModalProps) {
   const [name, setName] = useState('');
   const [balance, setBalance] = useState('');
+  const [isDefault, setIsDefault] = useState(false);
 
   useEffect(() => {
     if (visible) {
       if (editing) {
         setName(editing.name);
         setBalance(String(editing.current_balance));
+        setIsDefault(editing.is_default === 1);
       } else {
         setName('');
         setBalance('');
+        // First account auto-defaults
+        setIsDefault(totalAccounts === 0);
       }
     }
-  }, [visible, editing]);
+  }, [visible, editing?.id, totalAccounts]);
 
   const handleSave = () => {
     const parsedBalance = parseFloat(balance) || 0;
     if (!name.trim()) return;
-    onSave(name.trim(), parsedBalance);
+    onSave(name.trim(), parsedBalance, isDefault);
   };
+
+  // First-account lock: always default, no toggle
+  const isFirstAccount = !editing && totalAccounts === 0;
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
@@ -80,6 +89,48 @@ export function AccountModal({ visible, onClose, onSave, editing }: AccountModal
               keyboardType="decimal-pad"
               placeholder="0.00"
             />
+
+            {/* Default account toggle */}
+            <TouchableOpacity
+              onPress={() => !isFirstAccount && setIsDefault(!isDefault)}
+              activeOpacity={isFirstAccount ? 1 : 0.7}
+              disabled={isFirstAccount}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 10,
+                padding: 10,
+                backgroundColor: isDefault ? `${COLORS.accent}22` : COLORS.background,
+                borderRadius: 8,
+                borderWidth: 1,
+                borderColor: isDefault ? COLORS.accent : COLORS.border,
+              }}
+            >
+              <View
+                style={{
+                  width: 20,
+                  height: 20,
+                  borderRadius: 4,
+                  backgroundColor: isDefault ? COLORS.accent : 'transparent',
+                  borderWidth: 2,
+                  borderColor: isDefault ? COLORS.accent : COLORS.border,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                {isDefault && <Ionicons name="checkmark" size={14} color="#ffffff" />}
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: COLORS.primary, fontSize: 14, fontWeight: '600' }}>
+                  Default account
+                </Text>
+                <Text style={{ color: COLORS.muted, fontSize: 12 }}>
+                  {isFirstAccount
+                    ? 'First account is always default'
+                    : 'Pre-selected when adding transactions'}
+                </Text>
+              </View>
+            </TouchableOpacity>
 
             {editing ? (
               <Text style={{ color: COLORS.muted, fontSize: 12 }}>

@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, ScrollView, RefreshControl } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useQueryClient } from '@tanstack/react-query';
@@ -20,16 +21,9 @@ import {
   formatCurrency,
   formatDate,
   formatDateDisplay,
-  getSafeToSpendColor,
   COLORS,
   hexToRgba,
 } from '../lib/utils';
-
-const SAFE_COLORS = {
-  emerald: { text: '#34d399', gradStart: 'rgba(6,78,59,0.4)', gradEnd: 'rgba(6,78,59,0.1)' },
-  yellow: { text: '#facc15', gradStart: 'rgba(113,63,18,0.4)', gradEnd: 'rgba(113,63,18,0.1)' },
-  red: { text: '#f87171', gradStart: 'rgba(127,29,29,0.4)', gradEnd: 'rgba(127,29,29,0.1)' },
-};
 
 export function DashboardScreen() {
   const qc = useQueryClient();
@@ -56,9 +50,6 @@ export function DashboardScreen() {
   };
 
   const threshold = settings?.warning_threshold ?? 500;
-  const safe = safeToSpend?.safeToSpend ?? 0;
-  const colorKey = getSafeToSpendColor(safe, threshold);
-  const safeColors = SAFE_COLORS[colorKey];
 
   // Generate 14-day timeline
   const timeline14 = React.useMemo(() => {
@@ -67,23 +58,24 @@ export function DashboardScreen() {
   }, [scheduledItems, safeToSpend?.totalBalance, settings]);
 
   return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.background }}>
     <ScrollView
-      style={{ flex: 1, backgroundColor: COLORS.background }}
+      style={{ flex: 1 }}
       contentContainerStyle={{ padding: 16, paddingBottom: 100 }}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.muted} />}
     >
       {/* Header */}
-      <View style={{ marginBottom: 20, paddingTop: 8 }}>
+      <View style={{ marginBottom: 20 }}>
         <Text style={{ color: COLORS.primary, fontSize: 28, fontWeight: '800' }}>Dashboard</Text>
         <Text style={{ color: COLORS.muted, fontSize: 14, marginTop: 2 }}>
           Your financial overview
         </Text>
       </View>
 
-      {/* 2x2 Stats Grid */}
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
+      {/* Stats Row */}
+      <View style={{ flexDirection: 'row', gap: 12, marginBottom: 16 }}>
         {/* Current Balance */}
-        <Card style={{ flex: 1, minWidth: '45%' }}>
+        <Card style={{ flex: 1 }}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <View style={{ flex: 1 }}>
               <Text style={{ color: COLORS.muted, fontSize: 12, fontWeight: '500', marginBottom: 4 }}>
@@ -102,42 +94,8 @@ export function DashboardScreen() {
           </View>
         </Card>
 
-        {/* Safe to Spend */}
-        <Card
-          style={{
-            flex: 1,
-            minWidth: '45%',
-            backgroundColor: safeColors.gradStart,
-            borderColor: colorKey === 'emerald' ? 'rgba(52,211,153,0.3)' : colorKey === 'yellow' ? 'rgba(250,204,21,0.3)' : 'rgba(248,113,113,0.3)',
-          }}
-        >
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <View style={{ flex: 1 }}>
-              <Text style={{ color: COLORS.muted, fontSize: 12, fontWeight: '500', marginBottom: 4 }}>
-                Safe to Spend
-              </Text>
-              <Text style={{ color: safeColors.text, fontSize: 22, fontWeight: '800' }}>
-                {formatCurrency(safe)}
-              </Text>
-              <Text style={{ color: COLORS.muted, fontSize: 11, marginTop: 2 }}>
-                −{formatCurrency(safeToSpend?.billsBeforePaycheck ?? 0)} bills
-              </Text>
-              <Text style={{ color: COLORS.muted, fontSize: 11 }}>
-                −{formatCurrency(safeToSpend?.totalSinkingReserved ?? 0)} funds
-              </Text>
-            </View>
-            <View style={{ backgroundColor: `${safeColors.text}20`, padding: 8, borderRadius: 8 }}>
-              {colorKey !== 'emerald' ? (
-                <Ionicons name="warning-outline" size={18} color={safeColors.text} />
-              ) : (
-                <Ionicons name="shield-checkmark-outline" size={18} color={safeColors.text} />
-              )}
-            </View>
-          </View>
-        </Card>
-
         {/* Next Paycheck */}
-        <Card style={{ flex: 1, minWidth: '45%' }}>
+        <Card style={{ flex: 1 }}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <View style={{ flex: 1 }}>
               <Text style={{ color: COLORS.muted, fontSize: 12, fontWeight: '500', marginBottom: 4 }}>
@@ -154,26 +112,6 @@ export function DashboardScreen() {
             </View>
             <View style={{ backgroundColor: 'rgba(52,211,153,0.15)', padding: 8, borderRadius: 8 }}>
               <Ionicons name="trending-up-outline" size={18} color={COLORS.income} />
-            </View>
-          </View>
-        </Card>
-
-        {/* After Next Paycheck */}
-        <Card style={{ flex: 1, minWidth: '45%' }}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <View style={{ flex: 1 }}>
-              <Text style={{ color: COLORS.muted, fontSize: 12, fontWeight: '500', marginBottom: 4 }}>
-                After Paycheck
-              </Text>
-              <Text style={{ color: COLORS.primary, fontSize: 22, fontWeight: '800' }}>
-                {formatCurrency(safeToSpend?.afterNextPaycheck ?? 0)}
-              </Text>
-              <Text style={{ color: COLORS.muted, fontSize: 12, marginTop: 2 }}>
-                Projected balance
-              </Text>
-            </View>
-            <View style={{ backgroundColor: 'rgba(99,102,241,0.15)', padding: 8, borderRadius: 8 }}>
-              <Ionicons name="calendar-outline" size={18} color={COLORS.accent} />
             </View>
           </View>
         </Card>
@@ -284,5 +222,6 @@ export function DashboardScreen() {
         )}
       </Card>
     </ScrollView>
+    </SafeAreaView>
   );
 }

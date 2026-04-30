@@ -24,8 +24,7 @@ export function MarkPaidModal({ visible, onClose, onConfirm, item }: MarkPaidMod
 
   if (!item) return null;
 
-  const isPaid = item.type === 'bill';
-  const label = isPaid ? 'Mark as Paid' : 'Mark as Received';
+  const label = item.type === 'bill' ? 'Mark as Paid' : item.type === 'paycheck' ? 'Mark as Received' : 'Mark as Contributed';
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
@@ -56,11 +55,13 @@ export function MarkPaidModal({ visible, onClose, onConfirm, item }: MarkPaidMod
           </Text>
 
           <Text style={{ color: COLORS.muted, fontSize: 13, lineHeight: 18 }}>
-            This will log a transaction and advance to the next occurrence.
+            {item.type === 'savings'
+              ? 'This will add to the sinking fund balance and advance to the next occurrence.'
+              : 'This will log a transaction and advance to the next occurrence.'}
           </Text>
 
           <Picker
-            label="Deduct from Account (optional)"
+            label={item.type === 'savings' ? 'Deduct from Account (optional)' : 'Deduct from Account (optional)'}
             options={accountOptions}
             value={accountId ?? -1}
             onChange={(v) => setAccountId(Number(v) === -1 ? null : Number(v))}

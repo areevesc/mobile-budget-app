@@ -3,6 +3,7 @@ export interface Account {
   name: string;
   current_balance: number;
   last_updated: string;
+  is_default: number;
 }
 
 export interface Category {
@@ -38,17 +39,23 @@ export interface SinkingFund {
   color: string;
 }
 
-export type RecurrenceInterval = 'weekly' | 'biweekly' | 'monthly' | 'quarterly' | 'annually' | 'none';
+export type RecurrenceInterval = 'weekly' | 'biweekly' | 'monthly' | 'quarterly' | 'annually' | 'none' | 'custom';
 
 export interface ScheduledItem {
   id: number;
   name: string;
   amount: number;
-  type: 'bill' | 'paycheck';
+  type: 'bill' | 'paycheck' | 'savings';
   due_date: string;
   recurrence_interval: RecurrenceInterval;
   category: string | null;
   is_active: number;
+  sinking_fund_id: number | null;
+  recurrence_days: number | null;
+  category_id: number | null;
+  // joined fields
+  category_name?: string;
+  category_icon?: string;
 }
 
 export interface Settings {
@@ -62,7 +69,7 @@ export interface TimelineEvent {
   id: string;
   scheduledItemId: number;
   name: string;
-  type: 'bill' | 'paycheck';
+  type: 'bill' | 'paycheck' | 'savings';
   amount: number;
   date: string;
   runningBalance: number;

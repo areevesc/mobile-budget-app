@@ -1,5 +1,4 @@
-import './global.css';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, createContext, useContext } from 'react';
 import { View, ActivityIndicator } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -9,6 +8,9 @@ import { initDatabase, getAccounts } from './src/lib/db';
 import { AppNavigator } from './src/navigation';
 import { OnboardingScreen } from './src/components/OnboardingScreen';
 import { COLORS } from './src/lib/utils';
+
+const AppResetContext = createContext<() => void>(() => {});
+export const useAppReset = () => useContext(AppResetContext);
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -55,12 +57,14 @@ export default function App() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <QueryClientProvider client={queryClient}>
-          <StatusBar style="light" backgroundColor={COLORS.background} />
-          {appState === 'onboarding' ? (
-            <OnboardingScreen onComplete={() => setAppState('ready')} />
-          ) : (
-            <AppNavigator />
-          )}
+          <AppResetContext.Provider value={() => setAppState('onboarding')}>
+            <StatusBar style="light" backgroundColor={COLORS.background} />
+            {appState === 'onboarding' ? (
+              <OnboardingScreen onComplete={() => setAppState('ready')} />
+            ) : (
+              <AppNavigator />
+            )}
+          </AppResetContext.Provider>
         </QueryClientProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

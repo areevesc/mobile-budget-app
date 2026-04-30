@@ -72,10 +72,47 @@ export async function initDatabase(): Promise<void> {
     );
   `);
 
-  // Check if first run (no categories seeded)
+  // Migrations
+  try {
+    db.execSync('ALTER TABLE scheduled_items ADD COLUMN sinking_fund_id INTEGER REFERENCES sinking_funds(id)');
+  } catch (_) { /* column already exists */ }
+  try {
+    db.execSync('ALTER TABLE scheduled_items ADD COLUMN recurrence_days INTEGER');
+  } catch (_) { /* column already exists */ }
+  try {
+    db.execSync('ALTER TABLE scheduled_items ADD COLUMN category_id INTEGER REFERENCES categories(id)');
+  } catch (_) { /* column already exists */ }
+  try {
+    db.execSync('ALTER TABLE accounts ADD COLUMN is_default INTEGER DEFAULT 0');
+  } catch (_) { /* column already exists */ }
+
+  // First-run seed MUST come before any "ensure X exists" blocks —
+  // otherwise those blocks create rows that make the seed check think
+  // the DB is already populated and skip seeding the rest.
   const catCount = db.getFirstSync<{ count: number }>('SELECT COUNT(*) as count FROM categories');
   if (!catCount || catCount.count === 0) {
     await seedDefaults(db);
+  }
+
+  // Ensure at least one account is marked default (backfill)
+  const anyDefault = db.getFirstSync('SELECT id FROM accounts WHERE is_default = 1');
+  if (!anyDefault) {
+    const first = db.getFirstSync<{ id: number }>('SELECT id FROM accounts ORDER BY id ASC LIMIT 1');
+    if (first) {
+      db.runSync('UPDATE accounts SET is_default = 1 WHERE id = ?', [first.id]);
+    }
+  }
+
+  // Backfill: ensure Savings category exists (for DBs seeded before this was added)
+  const savingsCat = db.getFirstSync('SELECT id FROM categories WHERE name = ? AND type = ?', ['Savings', 'expense']);
+  if (!savingsCat) {
+    db.runSync('INSERT INTO categories (name, type, color, icon) VALUES (?, ?, ?, ?)', ['Savings', 'expense', '#6366f1', '🐷']);
+  }
+
+  // Backfill: ensure Groceries category exists (added after Shopping/Food split)
+  const groceriesCat = db.getFirstSync('SELECT id FROM categories WHERE name = ? AND type = ?', ['Groceries', 'expense']);
+  if (!groceriesCat) {
+    db.runSync('INSERT INTO categories (name, type, color, icon) VALUES (?, ?, ?, ?)', ['Groceries', 'expense', '#84cc16', '🛒']);
   }
 
   // Ensure settings row exists
@@ -85,39 +122,68 @@ export async function initDatabase(): Promise<void> {
   }
 }
 
+const DEFAULT_EXPENSE_CATEGORIES = [
+  { name: 'Housing', icon: '🏠', color: '#6366f1' },
+  { name: 'Food & Dining', icon: '🍔', color: '#f97316' },
+  { name: 'Groceries', icon: '🛒', color: '#84cc16' },
+  { name: 'Transportation', icon: '🚗', color: '#3b82f6' },
+  { name: 'Utilities', icon: '💡', color: '#f59e0b' },
+  { name: 'Entertainment', icon: '🎬', color: '#ec4899' },
+  { name: 'Shopping', icon: '🛍', color: '#8b5cf6' },
+  { name: 'Health', icon: '💊', color: '#22c55e' },
+  { name: 'Personal Care', icon: '🧴', color: '#14b8a6' },
+  { name: 'Subscriptions', icon: '📱', color: '#06b6d4' },
+  { name: 'Other', icon: '📋', color: '#71717a' },
+  { name: 'Savings', icon: '🐷', color: '#6366f1' },
+];
+
+const DEFAULT_INCOME_CATEGORIES = [
+  { name: 'Paycheck', icon: '💼', color: '#22c55e' },
+  { name: 'Freelance', icon: '💻', color: '#6366f1' },
+  { name: 'Transfer', icon: '🔄', color: '#3b82f6' },
+  { name: 'Other Income', icon: '💰', color: '#f59e0b' },
+];
+
 async function seedDefaults(db: SQLite.SQLiteDatabase): Promise<void> {
-  const expenseCategories = [
-    { name: 'Housing', icon: '🏠', color: '#6366f1' },
-    { name: 'Food & Dining', icon: '🍔', color: '#f97316' },
-    { name: 'Transportation', icon: '🚗', color: '#3b82f6' },
-    { name: 'Utilities', icon: '💡', color: '#f59e0b' },
-    { name: 'Entertainment', icon: '🎬', color: '#ec4899' },
-    { name: 'Shopping', icon: '🛍', color: '#8b5cf6' },
-    { name: 'Health', icon: '💊', color: '#22c55e' },
-    { name: 'Personal Care', icon: '🧴', color: '#14b8a6' },
-    { name: 'Subscriptions', icon: '📱', color: '#06b6d4' },
-    { name: 'Other', icon: '📋', color: '#71717a' },
-  ];
-
-  const incomeCategories = [
-    { name: 'Paycheck', icon: '💼', color: '#22c55e' },
-    { name: 'Freelance', icon: '💻', color: '#6366f1' },
-    { name: 'Transfer', icon: '🔄', color: '#3b82f6' },
-    { name: 'Other Income', icon: '💰', color: '#f59e0b' },
-  ];
-
-  for (const cat of expenseCategories) {
+  for (const cat of DEFAULT_EXPENSE_CATEGORIES) {
     db.runSync(
       'INSERT INTO categories (name, type, color, icon) VALUES (?, ?, ?, ?)',
       [cat.name, 'expense', cat.color, cat.icon]
     );
   }
-  for (const cat of incomeCategories) {
+  for (const cat of DEFAULT_INCOME_CATEGORIES) {
     db.runSync(
       'INSERT INTO categories (name, type, color, icon) VALUES (?, ?, ?, ?)',
       [cat.name, 'income', cat.color, cat.icon]
     );
   }
+}
+
+// ─── Destructive: wipe everything, reseed defaults ───────────────────────────
+
+export function wipeAllData(): void {
+  const db = getDb();
+  db.execSync(`
+    DELETE FROM transactions;
+    DELETE FROM scheduled_items;
+    DELETE FROM sinking_funds;
+    DELETE FROM categories;
+    DELETE FROM accounts;
+    DELETE FROM settings;
+  `);
+  for (const cat of DEFAULT_EXPENSE_CATEGORIES) {
+    db.runSync(
+      'INSERT INTO categories (name, type, color, icon) VALUES (?, ?, ?, ?)',
+      [cat.name, 'expense', cat.color, cat.icon]
+    );
+  }
+  for (const cat of DEFAULT_INCOME_CATEGORIES) {
+    db.runSync(
+      'INSERT INTO categories (name, type, color, icon) VALUES (?, ?, ?, ?)',
+      [cat.name, 'income', cat.color, cat.icon]
+    );
+  }
+  db.runSync('INSERT INTO settings (id, warning_threshold, paycheck_interval) VALUES (1, 500, ?)', ['biweekly']);
 }
 
 // ─── Accounts ────────────────────────────────────────────────────────────────
@@ -132,23 +198,61 @@ export function getAccount(id: number): Account | null {
   return db.getFirstSync<Account>('SELECT * FROM accounts WHERE id = ?', [id]) ?? null;
 }
 
-export function createAccount(name: string, balance: number): Account {
+export function createAccount(name: string, balance: number, isDefault: boolean = false): Account {
   const db = getDb();
   const now = new Date().toISOString();
+
+  // First account is always default
+  const existing = db.getFirstSync<{ count: number }>('SELECT COUNT(*) as count FROM accounts');
+  const shouldBeDefault = isDefault || !existing || existing.count === 0;
+
+  if (shouldBeDefault) {
+    db.runSync('UPDATE accounts SET is_default = 0');
+  }
+
   const result = db.runSync(
-    'INSERT INTO accounts (name, current_balance, last_updated) VALUES (?, ?, ?)',
-    [name, balance, now]
+    'INSERT INTO accounts (name, current_balance, last_updated, is_default) VALUES (?, ?, ?, ?)',
+    [name, balance, now, shouldBeDefault ? 1 : 0]
   );
-  return { id: result.lastInsertRowId, name, current_balance: balance, last_updated: now };
+  return {
+    id: result.lastInsertRowId,
+    name,
+    current_balance: balance,
+    last_updated: now,
+    is_default: shouldBeDefault ? 1 : 0,
+  };
 }
 
-export function updateAccount(id: number, name: string, balance: number): void {
+export function updateAccount(id: number, name: string, balance: number, isDefault?: boolean): void {
   const db = getDb();
   const now = new Date().toISOString();
-  db.runSync(
-    'UPDATE accounts SET name = ?, current_balance = ?, last_updated = ? WHERE id = ?',
-    [name, balance, now, id]
-  );
+
+  if (isDefault === true) {
+    db.runSync('UPDATE accounts SET is_default = 0');
+  }
+
+  if (isDefault === undefined) {
+    db.runSync(
+      'UPDATE accounts SET name = ?, current_balance = ?, last_updated = ? WHERE id = ?',
+      [name, balance, now, id]
+    );
+  } else {
+    db.runSync(
+      'UPDATE accounts SET name = ?, current_balance = ?, last_updated = ?, is_default = ? WHERE id = ?',
+      [name, balance, now, isDefault ? 1 : 0, id]
+    );
+  }
+}
+
+export function setDefaultAccount(id: number): void {
+  const db = getDb();
+  db.runSync('UPDATE accounts SET is_default = 0');
+  db.runSync('UPDATE accounts SET is_default = 1 WHERE id = ?', [id]);
+}
+
+export function getDefaultAccount(): Account | null {
+  const db = getDb();
+  return db.getFirstSync<Account>('SELECT * FROM accounts WHERE is_default = 1 LIMIT 1') ?? null;
 }
 
 export function adjustAccountBalance(id: number, delta: number): void {
@@ -162,7 +266,14 @@ export function adjustAccountBalance(id: number, delta: number): void {
 
 export function deleteAccount(id: number): void {
   const db = getDb();
+  const wasDefault = db.getFirstSync<{ is_default: number }>('SELECT is_default FROM accounts WHERE id = ?', [id]);
   db.runSync('DELETE FROM accounts WHERE id = ?', [id]);
+
+  // If we deleted the default account, promote another
+  if (wasDefault?.is_default === 1) {
+    const next = db.getFirstSync<{ id: number }>('SELECT id FROM accounts ORDER BY id ASC LIMIT 1');
+    if (next) db.runSync('UPDATE accounts SET is_default = 1 WHERE id = ?', [next.id]);
+  }
 }
 
 export function getTotalBalance(): number {
@@ -200,7 +311,12 @@ export function deleteCategory(id: number): void {
 
 // ─── Transactions ─────────────────────────────────────────────────────────────
 
-export function getTransactions(filters?: { type?: string; category_id?: number }): Transaction[] {
+export function getTransactions(filters?: {
+  type?: string;
+  category_id?: number;
+  dateFrom?: string;
+  dateTo?: string;
+}): Transaction[] {
   const db = getDb();
   let sql = `
     SELECT t.*, c.name as category_name, c.icon as category_icon, c.color as category_color,
@@ -220,9 +336,65 @@ export function getTransactions(filters?: { type?: string; category_id?: number 
     sql += ' AND t.category_id = ?';
     params.push(filters.category_id);
   }
+  if (filters?.dateFrom) {
+    sql += ' AND t.date >= ?';
+    params.push(filters.dateFrom);
+  }
+  if (filters?.dateTo) {
+    sql += ' AND t.date <= ?';
+    params.push(filters.dateTo);
+  }
 
   sql += ' ORDER BY t.date DESC, t.id DESC';
   return db.getAllSync<Transaction>(sql, params);
+}
+
+export interface CategorySpend {
+  category_id: number | null;
+  category_name: string | null;
+  category_icon: string | null;
+  category_color: string | null;
+  total: number;
+}
+
+export function getSpendingByCategory(dateFrom: string, dateTo: string): CategorySpend[] {
+  const db = getDb();
+  return db.getAllSync<CategorySpend>(`
+    SELECT
+      t.category_id,
+      c.name as category_name,
+      c.icon as category_icon,
+      c.color as category_color,
+      SUM(t.amount) as total
+    FROM transactions t
+    LEFT JOIN categories c ON t.category_id = c.id
+    WHERE t.type = 'expense'
+      AND t.date >= ?
+      AND t.date <= ?
+    GROUP BY t.category_id
+    ORDER BY total DESC
+  `, [dateFrom, dateTo]);
+}
+
+export interface PeriodSummary {
+  totalIncome: number;
+  totalExpense: number;
+}
+
+export function getPeriodSummary(dateFrom: string, dateTo: string): PeriodSummary {
+  const db = getDb();
+  const income = db.getFirstSync<{ total: number }>(
+    `SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE type = 'income' AND date >= ? AND date <= ?`,
+    [dateFrom, dateTo]
+  );
+  const expense = db.getFirstSync<{ total: number }>(
+    `SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE type = 'expense' AND date >= ? AND date <= ?`,
+    [dateFrom, dateTo]
+  );
+  return {
+    totalIncome: income?.total ?? 0,
+    totalExpense: expense?.total ?? 0,
+  };
 }
 
 export function getRecentTransactions(limit = 10): Transaction[] {
@@ -310,12 +482,13 @@ export function getSinkingFunds(): SinkingFund[] {
   return db.getAllSync<SinkingFund>('SELECT * FROM sinking_funds ORDER BY name ASC');
 }
 
-export function createSinkingFund(fund: Omit<SinkingFund, 'id'>): void {
+export function createSinkingFund(fund: Omit<SinkingFund, 'id'>): number {
   const db = getDb();
-  db.runSync(
+  const result = db.runSync(
     'INSERT INTO sinking_funds (name, target_amount, current_amount, target_date, contribution_per_paycheck, color) VALUES (?, ?, ?, ?, ?, ?)',
     [fund.name, fund.target_amount, fund.current_amount, fund.target_date, fund.contribution_per_paycheck, fund.color]
   );
+  return result.lastInsertRowId;
 }
 
 export function updateSinkingFund(id: number, fund: Omit<SinkingFund, 'id'>): void {
@@ -345,6 +518,7 @@ export function contributeSinkingFund(id: number, amount: number, accountId: num
 
 export function deleteSinkingFund(id: number): void {
   const db = getDb();
+  db.runSync('DELETE FROM scheduled_items WHERE sinking_fund_id = ?', [id]);
   db.runSync('DELETE FROM sinking_funds WHERE id = ?', [id]);
 }
 
@@ -358,22 +532,28 @@ export function getTotalSinkingReserved(): number {
 
 export function getScheduledItems(): ScheduledItem[] {
   const db = getDb();
-  return db.getAllSync<ScheduledItem>('SELECT * FROM scheduled_items WHERE is_active = 1 ORDER BY type DESC, name ASC');
+  return db.getAllSync<ScheduledItem>(`
+    SELECT s.*, c.name as category_name, c.icon as category_icon
+    FROM scheduled_items s
+    LEFT JOIN categories c ON s.category_id = c.id
+    WHERE s.is_active = 1
+    ORDER BY s.type DESC, s.name ASC
+  `);
 }
 
 export function createScheduledItem(item: Omit<ScheduledItem, 'id'>): void {
   const db = getDb();
   db.runSync(
-    'INSERT INTO scheduled_items (name, amount, type, due_date, recurrence_interval, category, is_active) VALUES (?, ?, ?, ?, ?, ?, ?)',
-    [item.name, item.amount, item.type, item.due_date, item.recurrence_interval, item.category, item.is_active]
+    'INSERT INTO scheduled_items (name, amount, type, due_date, recurrence_interval, category, is_active, sinking_fund_id, recurrence_days, category_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    [item.name, item.amount, item.type, item.due_date, item.recurrence_interval, item.category, item.is_active, item.sinking_fund_id ?? null, item.recurrence_days ?? null, item.category_id ?? null]
   );
 }
 
 export function updateScheduledItem(id: number, item: Omit<ScheduledItem, 'id'>): void {
   const db = getDb();
   db.runSync(
-    'UPDATE scheduled_items SET name = ?, amount = ?, type = ?, due_date = ?, recurrence_interval = ?, category = ?, is_active = ? WHERE id = ?',
-    [item.name, item.amount, item.type, item.due_date, item.recurrence_interval, item.category, item.is_active, id]
+    'UPDATE scheduled_items SET name = ?, amount = ?, type = ?, due_date = ?, recurrence_interval = ?, category = ?, is_active = ?, sinking_fund_id = ?, recurrence_days = ?, category_id = ? WHERE id = ?',
+    [item.name, item.amount, item.type, item.due_date, item.recurrence_interval, item.category, item.is_active, item.sinking_fund_id ?? null, item.recurrence_days ?? null, item.category_id ?? null, id]
   );
 }
 
