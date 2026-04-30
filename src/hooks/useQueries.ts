@@ -15,6 +15,8 @@ export const QUERY_KEYS = {
   scheduledItems: ['scheduledItems'] as const,
   settings: ['settings'] as const,
   safeToSpend: ['safeToSpend'] as const,
+  spendingByCategory: (dateFrom: string, dateTo: string) => ['spendingByCategory', dateFrom, dateTo] as const,
+  periodSummary: (dateFrom: string, dateTo: string) => ['periodSummary', dateFrom, dateTo] as const,
 };
 
 // ─── Accounts ────────────────────────────────────────────────────────────────
@@ -29,8 +31,8 @@ export function useAccounts() {
 export function useCreateAccount() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ name, balance }: { name: string; balance: number }) =>
-      Promise.resolve(db.createAccount(name, balance)),
+    mutationFn: ({ name, balance, isDefault }: { name: string; balance: number; isDefault?: boolean }) =>
+      Promise.resolve(db.createAccount(name, balance, isDefault)),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: QUERY_KEYS.accounts });
       qc.invalidateQueries({ queryKey: QUERY_KEYS.safeToSpend });
@@ -41,11 +43,21 @@ export function useCreateAccount() {
 export function useUpdateAccount() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, name, balance }: { id: number; name: string; balance: number }) =>
-      Promise.resolve(db.updateAccount(id, name, balance)),
+    mutationFn: ({ id, name, balance, isDefault }: { id: number; name: string; balance: number; isDefault?: boolean }) =>
+      Promise.resolve(db.updateAccount(id, name, balance, isDefault)),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: QUERY_KEYS.accounts });
       qc.invalidateQueries({ queryKey: QUERY_KEYS.safeToSpend });
+    },
+  });
+}
+
+export function useSetDefaultAccount() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => Promise.resolve(db.setDefaultAccount(id)),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: QUERY_KEYS.accounts });
     },
   });
 }
@@ -111,10 +123,29 @@ export function useDeleteCategory() {
 
 // ─── Transactions ─────────────────────────────────────────────────────────────
 
-export function useTransactions(filters?: { type?: string; category_id?: number }) {
+export function useTransactions(filters?: {
+  type?: string;
+  category_id?: number;
+  dateFrom?: string;
+  dateTo?: string;
+}) {
   return useQuery({
     queryKey: QUERY_KEYS.transactions(filters),
     queryFn: () => db.getTransactions(filters),
+  });
+}
+
+export function useSpendingByCategory(dateFrom: string, dateTo: string) {
+  return useQuery({
+    queryKey: QUERY_KEYS.spendingByCategory(dateFrom, dateTo),
+    queryFn: () => db.getSpendingByCategory(dateFrom, dateTo),
+  });
+}
+
+export function usePeriodSummary(dateFrom: string, dateTo: string) {
+  return useQuery({
+    queryKey: QUERY_KEYS.periodSummary(dateFrom, dateTo),
+    queryFn: () => db.getPeriodSummary(dateFrom, dateTo),
   });
 }
 
@@ -282,6 +313,54 @@ export function useDeleteScheduledItem() {
   });
 }
 
+export function useUpdateStandaloneFundWithSchedule() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ fundId, fund, item }: { fundId: number; fund: Omit<SinkingFund, 'id'>; item: Omit<ScheduledItem, 'id'> }) => {
+      db.updateSinkingFund(fundId, fund);
+      db.createScheduledItem({ ...item, sinking_fund_id: fundId });
+      return Promise.resolve();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: QUERY_KEYS.scheduledItems });
+      qc.invalidateQueries({ queryKey: QUERY_KEYS.sinkingFunds });
+      qc.invalidateQueries({ queryKey: QUERY_KEYS.safeToSpend });
+    },
+  });
+}
+
+export function useCreateSavingsItem() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ item, fund }: { item: Omit<ScheduledItem, 'id'>; fund: Omit<SinkingFund, 'id'> }) => {
+      const fundId = db.createSinkingFund(fund);
+      db.createScheduledItem({ ...item, sinking_fund_id: fundId });
+      return Promise.resolve();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: QUERY_KEYS.scheduledItems });
+      qc.invalidateQueries({ queryKey: QUERY_KEYS.sinkingFunds });
+      qc.invalidateQueries({ queryKey: QUERY_KEYS.safeToSpend });
+    },
+  });
+}
+
+export function useUpdateSavingsItem() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, item, fund, fundId }: { id: number; item: Omit<ScheduledItem, 'id'>; fund: Omit<SinkingFund, 'id'>; fundId: number }) => {
+      db.updateSinkingFund(fundId, fund);
+      db.updateScheduledItem(id, { ...item, sinking_fund_id: fundId });
+      return Promise.resolve();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: QUERY_KEYS.scheduledItems });
+      qc.invalidateQueries({ queryKey: QUERY_KEYS.sinkingFunds });
+      qc.invalidateQueries({ queryKey: QUERY_KEYS.safeToSpend });
+    },
+  });
+}
+
 export function useMarkScheduledItemPaid() {
   const qc = useQueryClient();
   return useMutation({
@@ -293,16 +372,24 @@ export function useMarkScheduledItemPaid() {
       accountId: number | null;
     }) => {
       const { getNextOccurrenceDate } = require('../lib/calculations');
-      const txType = item.type === 'bill' ? 'expense' : 'income';
       const today = new Date().toISOString().split('T')[0];
 
-      db.createTransaction(today, item.amount, txType, null, item.name, accountId);
+      if (item.type === 'savings') {
+        if (item.sinking_fund_id) {
+          db.contributeSinkingFund(item.sinking_fund_id, item.amount, accountId);
+        }
+      } else {
+        const txType = item.type === 'bill' ? 'expense' : 'income';
+        db.createTransaction(today, item.amount, txType, item.category_id ?? null, item.name, accountId);
+      }
+
       const nextDate = getNextOccurrenceDate(item);
       db.advanceScheduledItemDate(item.id, nextDate);
       return Promise.resolve();
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: QUERY_KEYS.scheduledItems });
+      qc.invalidateQueries({ queryKey: QUERY_KEYS.sinkingFunds });
       qc.invalidateQueries({ queryKey: QUERY_KEYS.accounts });
       qc.invalidateQueries({ queryKey: ['transactions'] });
       qc.invalidateQueries({ queryKey: QUERY_KEYS.safeToSpend });
@@ -326,6 +413,16 @@ export function useSaveSettings() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: QUERY_KEYS.settings });
       qc.invalidateQueries({ queryKey: QUERY_KEYS.safeToSpend });
+    },
+  });
+}
+
+export function useWipeAllData() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => Promise.resolve(db.wipeAllData()),
+    onSuccess: () => {
+      qc.invalidateQueries();
     },
   });
 }

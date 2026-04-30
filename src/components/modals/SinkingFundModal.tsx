@@ -43,7 +43,7 @@ export function SinkingFundModal({ visible, onClose, onSave, editing }: SinkingF
         setColor('#6366f1');
       }
     }
-  }, [visible, editing]);
+  }, [visible, editing?.id]);
 
   const handleSave = () => {
     const parsedTarget = parseFloat(targetAmount);
@@ -75,6 +75,7 @@ export function SinkingFundModal({ visible, onClose, onSave, editing }: SinkingF
               padding: 20,
               borderTopWidth: 1,
               borderColor: COLORS.border,
+              maxHeight: '90%',
             }}
             onPress={(e) => e.stopPropagation()}
           >

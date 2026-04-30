@@ -64,10 +64,11 @@ export function TransactionModal({ visible, onClose, onSave, editing, initialTyp
         setDate(format(new Date(), 'yyyy-MM-dd'));
         setDescription('');
         setCategoryId(null);
-        setAccountId(null);
+        const defaultAcct = accounts.find((a) => a.is_default === 1);
+        setAccountId(defaultAcct?.id ?? (accounts[0]?.id ?? null));
       }
     }
-  }, [visible, editing, initialType]);
+  }, [visible, editing?.id, initialType, accounts.length]);
 
   // Reset category when type changes
   useEffect(() => {

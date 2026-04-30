@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import {
-  View, Text, ScrollView, TouchableOpacity, SafeAreaView,
+  View, Text, ScrollView, TouchableOpacity,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';

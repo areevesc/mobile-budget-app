@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import {
-  View, Text, ScrollView, TouchableOpacity, SafeAreaView, Alert,
+  View, Text, ScrollView, TouchableOpacity, Alert,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
@@ -24,10 +25,12 @@ import {
   useCreateCategory,
   useUpdateCategory,
   useDeleteCategory,
+  useWipeAllData,
 } from '../hooks/useQueries';
 import { exportAllData } from '../lib/db';
 import { formatDate, COLORS, PAYCHECK_INTERVAL_LABELS, hexToRgba } from '../lib/utils';
 import type { Account, Category } from '../types';
+import { useAppReset } from '../../App';
 
 const PAYCHECK_OPTIONS = Object.entries(PAYCHECK_INTERVAL_LABELS).map(([value, label]) => ({ value, label }));
 
@@ -75,6 +78,11 @@ export function SettingsScreen() {
   const createCategory = useCreateCategory();
   const updateCategory = useUpdateCategory();
   const deleteCategory = useDeleteCategory();
+
+  // Danger zone
+  const [wipeConfirmVisible, setWipeConfirmVisible] = useState(false);
+  const wipeAllData = useWipeAllData();
+  const resetApp = useAppReset();
 
   const incomeCategories = categories.filter((c) => c.type === 'income');
   const expenseCategories = categories.filter((c) => c.type === 'expense');
@@ -177,7 +185,14 @@ export function SettingsScreen() {
                 }}
               >
                 <View style={{ flex: 1 }}>
-                  <Text style={{ color: COLORS.primary, fontSize: 15, fontWeight: '600' }}>{account.name}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Text style={{ color: COLORS.primary, fontSize: 15, fontWeight: '600' }}>{account.name}</Text>
+                    {account.is_default === 1 && (
+                      <View style={{ backgroundColor: `${COLORS.accent}33`, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                        <Text style={{ color: COLORS.accent, fontSize: 10, fontWeight: '700' }}>DEFAULT</Text>
+                      </View>
+                    )}
+                  </View>
                   <Text style={{ color: COLORS.muted, fontSize: 12 }}>
                     Updated {formatDate(account.last_updated)}
                   </Text>
@@ -333,21 +348,35 @@ export function SettingsScreen() {
           </Text>
           <Button title="Export All Data" variant="outline" onPress={handleExport} />
         </Card>
+
+        {/* Danger Zone */}
+        <Card style={{ gap: 12, marginTop: 16, borderColor: COLORS.expense, borderWidth: 1 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Ionicons name="warning-outline" size={18} color={COLORS.expense} />
+            <Text style={{ color: COLORS.expense, fontSize: 16, fontWeight: '700' }}>Danger Zone</Text>
+          </View>
+          <Text style={{ color: COLORS.muted, fontSize: 14, lineHeight: 20 }}>
+            Erase all accounts, transactions, schedules, and sinking funds. Default categories will
+            be restored. This cannot be undone.
+          </Text>
+          <Button title="Erase All Data" variant="danger" onPress={() => setWipeConfirmVisible(true)} />
+        </Card>
       </ScrollView>
 
       <AccountModal
         visible={accountModalVisible}
         onClose={() => { setAccountModalVisible(false); setEditingAccount(null); }}
-        onSave={(name, balance) => {
+        onSave={(name, balance, isDefault) => {
           if (editingAccount) {
-            updateAccount.mutate({ id: editingAccount.id, name, balance });
+            updateAccount.mutate({ id: editingAccount.id, name, balance, isDefault });
           } else {
-            createAccount.mutate({ name, balance });
+            createAccount.mutate({ name, balance, isDefault });
           }
           setAccountModalVisible(false);
           setEditingAccount(null);
         }}
         editing={editingAccount}
+        totalAccounts={accounts.length}
       />
 
       <CategoryModal
@@ -387,6 +416,23 @@ export function SettingsScreen() {
           setDeleteCategoryTarget(null);
         }}
         onCancel={() => setDeleteCategoryTarget(null)}
+      />
+
+      <ConfirmDialog
+        visible={wipeConfirmVisible}
+        title="Erase All Data?"
+        message="This will permanently delete every account, transaction, schedule, and sinking fund. Default categories will be restored and you'll start fresh at onboarding. This cannot be undone."
+        confirmLabel="Erase Everything"
+        destructive
+        onConfirm={() => {
+          wipeAllData.mutate(undefined, {
+            onSuccess: () => {
+              setWipeConfirmVisible(false);
+              resetApp();
+            },
+          });
+        }}
+        onCancel={() => setWipeConfirmVisible(false)}
       />
     </SafeAreaView>
   );
