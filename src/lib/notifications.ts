@@ -1,15 +1,16 @@
-import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
 import type { ScheduledItem } from '../types';
 
-// Expo Go (SDK 53+) removed local notification support. Detect it via appOwnership
-// ('expo' = Expo Go) with executionEnvironment as fallback.
-const isExpoGo =
+// Expo Go (SDK 53+) removed notification support. appOwnership === 'expo' means Expo Go.
+export const isExpoGo =
   Constants.appOwnership === 'expo' ||
   Constants.executionEnvironment === 'storeClient';
 
-try {
-  if (!isExpoGo) {
+export function initNotificationHandler(): void {
+  if (isExpoGo) return;
+  try {
+    // Lazy require avoids native module init crash in Expo Go on import
+    const Notifications = require('expo-notifications');
     Notifications.setNotificationHandler({
       handleNotification: async () => ({
         shouldShowAlert: true,
@@ -19,12 +20,13 @@ try {
         shouldShowList: true,
       }),
     });
-  }
-} catch (_) {}
+  } catch (_) {}
+}
 
 export async function requestNotificationPermissions(): Promise<boolean> {
   if (isExpoGo) return false;
   try {
+    const Notifications = require('expo-notifications');
     const { status: existing } = await Notifications.getPermissionsAsync();
     if (existing === 'granted') return true;
     const { status } = await Notifications.requestPermissionsAsync();
@@ -36,8 +38,8 @@ export async function requestNotificationPermissions(): Promise<boolean> {
 
 export async function rescheduleAllNotifications(items: ScheduledItem[]): Promise<void> {
   if (isExpoGo) return;
-
   try {
+    const Notifications = require('expo-notifications');
     await Notifications.cancelAllScheduledNotificationsAsync();
 
     const now = new Date();
@@ -45,7 +47,6 @@ export async function rescheduleAllNotifications(items: ScheduledItem[]): Promis
     for (const item of items) {
       if (!item.is_active || item.type === 'savings') continue;
 
-      // Notify at 9am the day before due date
       const dueDate = new Date(`${item.due_date}T09:00:00`);
       const notifyDate = new Date(dueDate);
       notifyDate.setDate(notifyDate.getDate() - 1);
@@ -62,7 +63,10 @@ export async function rescheduleAllNotifications(items: ScheduledItem[]): Promis
           body: amountStr,
           data: { scheduledItemId: item.id },
         },
-        trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: notifyDate },
+        trigger: {
+          type: Notifications.SchedulableTriggerInputTypes.DATE,
+          date: notifyDate,
+        },
       });
     }
   } catch (_) {}
