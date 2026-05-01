@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { View } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -11,6 +11,8 @@ import { ScheduleScreen } from '../screens/ScheduleScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';
 import { FAB } from '../components/FAB';
 import { COLORS } from '../lib/utils';
+import { useScheduledItems } from '../hooks/useQueries';
+import { rescheduleAllNotifications } from '../lib/notifications';
 
 const Tab = createBottomTabNavigator();
 
@@ -24,10 +26,19 @@ const TAB_ICONS: Record<string, { active: IoniconName; inactive: IoniconName }> 
   Settings: { active: 'settings', inactive: 'settings-outline' },
 };
 
+function NotificationSync() {
+  const { data: items } = useScheduledItems();
+  useEffect(() => {
+    if (items) rescheduleAllNotifications(items);
+  }, [items]);
+  return null;
+}
+
 export function AppNavigator() {
   return (
     <NavigationContainer>
       <View style={{ flex: 1 }}>
+        <NotificationSync />
         <Tab.Navigator
           screenOptions={({ route }) => ({
             headerShown: false,

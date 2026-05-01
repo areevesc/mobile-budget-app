@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import {
-  View, Text, SectionList, TouchableOpacity,
+  View, Text, SectionList, TouchableOpacity, TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -35,6 +35,7 @@ type TxSection = { title: string; data: Transaction[] };
 export function TransactionsScreen() {
   const today = new Date().toISOString().split('T')[0];
 
+  const [searchQuery, setSearchQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all');
   const [categoryFilter, setCategoryFilter] = useState<number | null>(null);
   const [datePreset, setDatePreset] = useState<DatePreset>('all');
@@ -64,8 +65,16 @@ export function TransactionsScreen() {
   const deleteTransaction = useDeleteTransaction();
 
   const sections: TxSection[] = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    const filtered = q
+      ? transactions.filter(
+          (tx) =>
+            tx.description?.toLowerCase().includes(q) ||
+            tx.category_name?.toLowerCase().includes(q)
+        )
+      : transactions;
     const groups: Record<string, Transaction[]> = {};
-    for (const tx of transactions) {
+    for (const tx of filtered) {
       if (!groups[tx.date]) groups[tx.date] = [];
       groups[tx.date].push(tx);
     }
@@ -79,9 +88,10 @@ export function TransactionsScreen() {
     ...categories.map((c) => ({ value: c.id, label: `${c.icon} ${c.name}` })),
   ];
 
-  const hasFilters = typeFilter !== 'all' || categoryFilter !== null || datePreset !== 'all';
+  const hasFilters = searchQuery.trim() !== '' || typeFilter !== 'all' || categoryFilter !== null || datePreset !== 'all';
 
   const clearFilters = () => {
+    setSearchQuery('');
     setTypeFilter('all');
     setCategoryFilter(null);
     setDatePreset('all');
@@ -199,7 +209,7 @@ export function TransactionsScreen() {
         <View>
           <Text style={{ color: COLORS.primary, fontSize: 24, fontWeight: '800' }}>Transactions</Text>
           <Text style={{ color: COLORS.muted, fontSize: 13 }}>
-            {transactions.length} transaction{transactions.length !== 1 ? 's' : ''}
+            {sections.reduce((n, s) => n + s.data.length, 0)} transaction{sections.reduce((n, s) => n + s.data.length, 0) !== 1 ? 's' : ''}
           </Text>
         </View>
         <Button
@@ -208,6 +218,38 @@ export function TransactionsScreen() {
           size="sm"
           onPress={() => { setEditingTx(null); setModalVisible(true); }}
         />
+      </View>
+
+      {/* Search */}
+      <View style={{ paddingHorizontal: 16, paddingBottom: 8 }}>
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            backgroundColor: COLORS.card,
+            borderRadius: 10,
+            borderWidth: 1,
+            borderColor: COLORS.border,
+            paddingHorizontal: 12,
+            height: 40,
+            gap: 8,
+          }}
+        >
+          <Ionicons name="search-outline" size={16} color={COLORS.muted} />
+          <TextInput
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholder="Search transactions..."
+            placeholderTextColor={COLORS.muted}
+            style={{ flex: 1, color: COLORS.primary, fontSize: 14 }}
+            returnKeyType="search"
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity onPress={() => setSearchQuery('')}>
+              <Ionicons name="close-circle" size={16} color={COLORS.muted} />
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
 
       {/* Filters */}

@@ -5,6 +5,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { initDatabase, getAccounts } from './src/lib/db';
+import { requestNotificationPermissions } from './src/lib/notifications';
 import { AppNavigator } from './src/navigation';
 import { OnboardingScreen } from './src/components/OnboardingScreen';
 import { COLORS } from './src/lib/utils';
@@ -30,6 +31,7 @@ export default function App() {
     async function initialize() {
       try {
         await initDatabase();
+        requestNotificationPermissions();
         // Check if user has done any setup (has accounts)
         const accounts = getAccounts();
         if (accounts.length === 0) {

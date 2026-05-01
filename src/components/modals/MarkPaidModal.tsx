@@ -14,8 +14,14 @@ interface MarkPaidModalProps {
 }
 
 export function MarkPaidModal({ visible, onClose, onConfirm, item }: MarkPaidModalProps) {
-  const [accountId, setAccountId] = useState<number | null>(null);
   const { data: accounts = [] } = useAccounts();
+  const defaultAccount = accounts.find((a) => a.is_default === 1) ?? accounts[0] ?? null;
+  const [accountId, setAccountId] = useState<number | null>(null);
+
+  // Reset to default account whenever modal opens
+  React.useEffect(() => {
+    if (visible) setAccountId(defaultAccount?.id ?? null);
+  }, [visible]);
 
   const accountOptions = [
     { value: -1, label: 'No account' },
