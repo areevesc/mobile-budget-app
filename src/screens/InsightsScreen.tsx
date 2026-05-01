@@ -7,7 +7,7 @@ import { Card } from '../components/ui/Card';
 import { ProgressBar } from '../components/ui/ProgressBar';
 import { PeriodPicker } from '../components/ui/PeriodPicker';
 import { DatePickerField } from '../components/ui/DatePickerField';
-import { useSpendingByCategory, usePeriodSummary, QUERY_KEYS } from '../hooks/useQueries';
+import { useSpendingByCategory, QUERY_KEYS } from '../hooks/useQueries';
 import {
   formatCurrency,
   formatDate,
@@ -35,16 +35,12 @@ export function InsightsScreen() {
   useFocusEffect(
     React.useCallback(() => {
       qc.invalidateQueries({ queryKey: QUERY_KEYS.spendingByCategory(dateFrom, dateTo) });
-      qc.invalidateQueries({ queryKey: QUERY_KEYS.periodSummary(dateFrom, dateTo) });
     }, [dateFrom, dateTo])
   );
 
   const { data: spending = [] } = useSpendingByCategory(dateFrom, dateTo);
-  const { data: summary } = usePeriodSummary(dateFrom, dateTo);
 
-  const totalIncome = summary?.totalIncome ?? 0;
-  const totalExpense = summary?.totalExpense ?? 0;
-  const net = totalIncome - totalExpense;
+  const totalExpense = useMemo(() => spending.reduce((s, i) => s + i.total, 0), [spending]);
 
   const periodLabel = useMemo(() => {
     if (datePreset === 'custom') {
@@ -83,36 +79,6 @@ export function InsightsScreen() {
             </View>
           </View>
         )}
-
-        {/* Income / Expenses cards */}
-        <View style={{ flexDirection: 'row', gap: 12, marginBottom: 12 }}>
-          <Card style={{ flex: 1 }}>
-            <Text style={{ color: COLORS.muted, fontSize: 12, fontWeight: '500', marginBottom: 6 }}>Income</Text>
-            <Text style={{ color: COLORS.income, fontSize: 20, fontWeight: '800' }}>
-              {formatCurrency(totalIncome)}
-            </Text>
-          </Card>
-          <Card style={{ flex: 1 }}>
-            <Text style={{ color: COLORS.muted, fontSize: 12, fontWeight: '500', marginBottom: 6 }}>Expenses</Text>
-            <Text style={{ color: COLORS.expense, fontSize: 20, fontWeight: '800' }}>
-              {formatCurrency(totalExpense)}
-            </Text>
-          </Card>
-        </View>
-
-        {/* Net */}
-        <Card style={{ marginBottom: 16, alignItems: 'center', paddingVertical: 14 }}>
-          <Text style={{ color: COLORS.muted, fontSize: 12, fontWeight: '500', marginBottom: 4 }}>Net</Text>
-          <Text
-            style={{
-              color: net >= 0 ? COLORS.income : COLORS.expense,
-              fontSize: 26,
-              fontWeight: '800',
-            }}
-          >
-            {net >= 0 ? '+' : ''}{formatCurrency(net)}
-          </Text>
-        </Card>
 
         {/* Spending by category */}
         <Card>
